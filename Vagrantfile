@@ -38,19 +38,28 @@ Vagrant.configure("2") do |config|
 
   config.vm.synced_folder ".", "/vagrant", disabled: true
 
-  config.vm.provision "shell", inline: <<-SHELL
-    # Print commands and exit on error
-    set -ex
-    dnf install -y http://mirror.centos.org/centos/8/BaseOS/x86_64/os/Packages/centos-linux-repos-8-2.el8.noarch.rpm http://mirror.centos.org/centos/8/BaseOS/x86_64/os/Packages/centos-gpg-keys-8-2.el8.noarch.rpm
-    dnf install -y python3 podman
-    curl --silent --remote-name --location https://github.com/ceph/ceph/raw/pacific/src/cephadm/cephadm
-    chmod +x cephadm
-    sudo ./cephadm add-repo --release pacific
-    sudo ./cephadm install
-    rm ./cephadm
-    sudo cephadm bootstrap --mon-ip "$(hostname -I | cut -d' ' -f1)" --initial-dashboard-password "redhat1!" --single-host-defaults --dashboard-password-noupdate --allow-fqdn-hostname
-    sudo cephadm shell -- ceph orch apply osd --all-available-devices
-  SHELL
+  if Dir.glob("#{File.dirname(__FILE__)}/.vagrant/machines/default/*").empty? || ARGV[1] == '--provision'
+    print "Please insert your Red Hat Network credentials\n"
+    print "These are the same credentials you use on access.redhat.com\n"
+    print "Username: "
+    username = STDIN.gets.chomp
+    print "Password (hidden): "
+    password = STDIN.noecho(&:gets).chomp
+    print "\n"
+
+    config.vm.provision "shell", sensitive: true, env: {"USER" => username, "PASSWORD" => password}, inline: <<-SHELL
+      # Print commands and exit on error
+      set -ex
+      subscription-manager register --username $USER --password $PASSWORD --force
+      POOLID=$(subscription-manager list --matches 'Red Hat Ceph Storage' --available --pool-only | head -n1)
+      subscription-manager attach --pool=$POOLID
+      subscription-manager repos --disable='*'
+      subscription-manager repos --enable=rhel-8-for-x86_64-baseos-rpms --enable=rhel-8-for-x86_64-appstream-rpms --enable=rhceph-5-tools-for-rhel-8-x86_64-rpms # --enable=ansible-2.9-for-rhel-8-x86_64-rpms
+      dnf install -y cephadm
+      cephadm bootstrap --mon-ip "$(hostname -I | cut -d' ' -f1)" --registry-url registry.redhat.io --registry-username $USER --registry-password $PASSWORD --initial-dashboard-password "redhat1!" --dashboard-password-noupdate --allow-fqdn-hostname
+      cephadm shell -- ceph orch apply osd --all-available-devices
+    SHELL
+end
 
   $msg = <<MSG
 ------------------------------------------------------
