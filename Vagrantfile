@@ -2,13 +2,15 @@
 # vi: set ft=ruby :
 
 Vagrant.configure("2") do |config|
-  config.vm.box = "shekeriev/centos-8-minimal"
+  config.vm.box = "generic/rhel8"
 
-  config.vm.provider "virtualbox" do |vb|
+  config.vm.provider :virtualbox do |vb|
   
     vb.name = "cephadm"
     vb.memory = "4096"
     vb.cpus = 4
+
+    vb.customize ["storagectl", "cephadm", "--name", "SATA", "--add", "sata", "--controller", "IntelAhci"]
 
     (0..2).each do |i|
       vb.customize [ "createmedium", "disk", "--filename", "osd-#{i}.vmdk", 
@@ -16,6 +18,16 @@ Vagrant.configure("2") do |config|
       vb.customize [ "storageattach", "cephadm" , "--storagectl", 
       "SATA", "--port", "#{i+1}", "--device", "0", "--type", 
       "hdd", "--medium", "osd-#{i}.vmdk", "--nonrotational", "on", "--discard", "on"]
+    end
+  end
+
+  config.vm.provider :libvirt do |lv|
+
+    lv.cpus = 4
+    lv.memory = "4096"
+
+    (0..2).each do |i|
+      lv.storage :file, :size => '10G'
     end
   end
 
@@ -29,13 +41,14 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     # Print commands and exit on error
     set -ex
+    dnf install -y http://mirror.centos.org/centos/8/BaseOS/x86_64/os/Packages/centos-linux-repos-8-2.el8.noarch.rpm http://mirror.centos.org/centos/8/BaseOS/x86_64/os/Packages/centos-gpg-keys-8-2.el8.noarch.rpm
     dnf install -y python3 podman
     curl --silent --remote-name --location https://github.com/ceph/ceph/raw/pacific/src/cephadm/cephadm
     chmod +x cephadm
     sudo ./cephadm add-repo --release pacific
     sudo ./cephadm install
     rm ./cephadm
-    sudo cephadm bootstrap --mon-ip "$(hostname -I | cut -d' ' -f1)" --initial-dashboard-password "redhat1!" --single-host-defaults --dashboard-password-noupdate
+    sudo cephadm bootstrap --mon-ip "$(hostname -I | cut -d' ' -f1)" --initial-dashboard-password "redhat1!" --single-host-defaults --dashboard-password-noupdate --allow-fqdn-hostname
     sudo cephadm shell -- ceph orch apply osd --all-available-devices
   SHELL
 
