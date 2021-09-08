@@ -29,14 +29,13 @@ Vagrant.configure("2") do |config|
   config.vm.provision "shell", inline: <<-SHELL
     # Print commands and exit on error
     set -ex
-    dnf update
     dnf install -y python3 podman
     curl --silent --remote-name --location https://github.com/ceph/ceph/raw/pacific/src/cephadm/cephadm
     chmod +x cephadm
     sudo ./cephadm add-repo --release pacific
     sudo ./cephadm install
     rm ./cephadm
-    sudo cephadm bootstrap --mon-ip "$(hostname -I | cut -d' ' -f1)" --initial-dashboard-password "redhat1!" --single-host-defaults
+    sudo cephadm bootstrap --mon-ip "$(hostname -I | cut -d' ' -f1)" --initial-dashboard-password "redhat1!" --single-host-defaults --dashboard-password-noupdate
     sudo cephadm shell -- ceph orch apply osd --all-available-devices
   SHELL
 
